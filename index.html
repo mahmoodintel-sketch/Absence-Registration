@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <title>المسابقة الثقافية - أ. عبدالرحمن المعمري</title>
+    <style>
+        :root { --bg-purple: #2d163d; --red-team: #e74c3c; --blue-team: #3498db; --gold: #ffd700; }
+        body { background: var(--bg-purple); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 10px; color: white; overflow-x: hidden; }
+        
+        .header { text-align: center; margin-bottom: 10px; border: 2px solid var(--gold); padding: 10px; border-radius: 15px; background: rgba(0,0,0,0.2); width: 90%; }
+        
+        .scoreboard { display: flex; justify-content: space-around; width: 100%; max-width: 700px; margin-bottom: 10px; }
+        .score-card { padding: 10px; border-radius: 15px; text-align: center; border: 4px solid transparent; width: 45%; transition: 0.4s; }
+        .score-card.active-red { border-color: var(--gold); background: var(--red-team); box-shadow: 0 0 20px var(--red-team); }
+        .score-card.active-blue { border-color: var(--gold); background: var(--blue-team); box-shadow: 0 0 20px var(--blue-team); }
+        .red-idle { background: #5a1a1a; opacity: 0.6; }
+        .blue-idle { background: #1a3a5a; opacity: 0.6; }
+
+        .grid-container { position: relative; padding: 20px; }
+        .row { display: flex; justify-content: center; margin-bottom: -25px; }
+        
+        .hexagon { 
+            width: 75px; height: 85px; background: white; 
+            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5em; font-weight: bold; color: #2d163d;
+            cursor: pointer; transition: 0.3s; margin: 3px; z-index: 2;
+        }
+        .hexagon:hover { transform: scale(1.1); filter: brightness(0.9); }
+        .hexagon.red-owned { background: var(--red-team) !important; color: white !important; cursor: not-allowed; border: 2px solid white; }
+        .hexagon.blue-owned { background: var(--blue-team) !important; color: white !important; cursor: not-allowed; border: 2px solid white; }
+
+        #modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; color: black; padding: 25px; border-radius: 20px; width: 90%; max-width: 500px; text-align: center; border: 8px solid var(--red-team); }
+        .timer { font-size: 2.2em; color: #e74c3c; font-weight: bold; margin-bottom: 10px; }
+        .option-btn { display: block; width: 100%; padding: 10px; margin: 6px 0; border: 2px solid #ddd; border-radius: 10px; font-size: 1.1em; cursor: pointer; font-weight: bold; }
+        .option-btn:hover { background: #f0f0f0; }
+
+        #final-msg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 2000; flex-direction: column; justify-content: center; align-items: center; }
+        .winner-banner { background: var(--gold); color: black; padding: 40px; border-radius: 30px; text-align: center; box-shadow: 0 0 50px var(--gold); }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1 style="color:var(--gold); margin: 0;">مسابقة ثقافية</h1>
+    <p style="margin:5px;">إعداد الأستاذ: <strong>عبدالرحمن المعمري</strong></p>
+    <p style="margin:0; font-size: 0.9em;">مدرسة دقال للتعليم الاساسي ( ١- ١٢)</p>
+</div>
+
+<div class="scoreboard">
+    <div id="card-red" class="score-card active-red">
+        <h3>الفريق الأحمر</h3>
+        <div id="s-red" style="font-size: 2em; font-weight: bold;">0</div>
+    </div>
+    <div id="card-blue" class="score-card blue-idle">
+        <h3>الفريق الأزرق</h3>
+        <div id="s-blue" style="font-size: 2em; font-weight: bold;">0</div>
+    </div>
+</div>
+
+<div class="grid-container" id="board"></div>
+
+<div id="modal">
+    <div class="modal-content" id="m-content">
+        <div class="timer" id="timer">15</div>
+        <div id="q-category" style="color: #666; font-weight: bold; margin-bottom: 5px;"></div>
+        <h3 id="q-text" style="font-size: 1.3em; margin-top: 0;"></h3>
+        <div id="options-box"></div>
+    </div>
+</div>
+
+<div id="final-msg">
+    <div class="winner-banner">
+        <h1 id="winner-text" style="font-size: 3em;"></h1>
+        <h2>بطل المسابقة الثقافية! 🏆</h2>
+        <button onclick="location.reload()" style="padding:15px 40px; cursor:pointer; margin-top:20px;">بدء من جديد</button>
+    </div>
+</div>
+
+<audio id="snd-correct" src="https://assets.mixkit.co/active_storage/sfx/2013/2013-preview.mp3"></audio>
+<audio id="snd-wrong" src="https://assets.mixkit.co/active_storage/sfx/255/255-preview.mp3"></audio>
+
+<script>
+    const questions = [
+        {cat:"علوم", q:"ما الوحدة الأساسية لقياس شدة التيار الكهربائي؟", a:["فولت", "أمبير", "واط"], c:1},
+        {cat:"تاريخ", q:"في أي عام سقطت بغداد على يد المغول؟", a:["1258م", "1300م", "1206م"], c:0},
+        {cat:"جغرافيا", q:"ما هي أكبر جزيرة في العالم؟", a:["مدغشقر", "جرينلاند", "أستراليا"], c:1},
+        {cat:"أدب", q:"من هو مؤلف رواية 'البؤساء'؟", a:["شكسبير", "فيكتور هوغو", "دوستويفسكي"], c:1},
+        {cat:"شعر", q:"من القائل: إذا الشعب يومًا أراد الحياة؟", a:["أحمد شوقي", "أبو القاسم الشابي", "المتنبي"], c:1},
+        {cat:"علوم", q:"ما الكوكب المعروف بالكوكب الأحمر؟", a:["المريخ", "الزهرة", "عطارد"], c:0},
+        {cat:"تاريخ", q:"من هو القائد الذي فتح الأندلس؟", a:["صلاح الدين", "طارق بن زياد", "خالد بن الوليد"], c:1},
+        {cat:"جغرافيا", q:"أي دولة يمر بها نهر الدانوب؟", a:["مصر", "ألمانيا", "الهند"], c:1},
+        {cat:"أدب", q:"من هو شاعر النيل؟", a:["أحمد شوقي", "حافظ إبراهيم", "نزار قباني"], c:1},
+        {cat:"علوم", q:"ما أسرع شيء في الكون؟", a:["الصوت", "الضوء", "الرياح"], c:1},
+        {cat:"تاريخ", q:"من هو أول رئيس لمصر بعد الثورة؟", a:["جمال عبد الناصر", "محمد نجيب", "أنور السادات"], c:1},
+        {cat:"جغرافيا", q:"ما هي أصغر دولة في العالم؟", a:["موناكو", "الفاتيكان", "لوكسمبورغ"], c:1},
+        {cat:"أدب", q:"من مؤلف كتاب 'كليلة ودمنة'؟", a:["ابن المقفع", "الجاحظ", "ابن خلدون"], c:0},
+        {cat:"شعر", q:"من القائل: الخيل والليل والبيداء تعرفني؟", a:["المتنبي", "عنترة", "شوقي"], c:0},
+        {cat:"علوم", q:"ما العضو المسؤول عن تنقية الدم في جسم الإنسان؟", a:["الكبد", "الكلى", "القلب"], c:1},
+        {cat:"تاريخ", q:"في أي معركة انتصر المسلمون بقيادة صلاح الدين؟", a:["بدر", "حطين", "اليرموك"], c:1},
+        {cat:"جغرافيا", q:"ما هي عاصمة كندا؟", a:["تورونتو", "أوتاوا", "فانكوفر"], c:1},
+        {cat:"أدب", q:"من هو مؤلف 'ألف ليلة وليلة'؟", a:["مؤلف واحد", "مؤلف مجهول/مجموعة مؤلفين", "الجاحظ"], c:1},
+        {cat:"علوم", q:"ما هو الغاز الأكثر وجودًا في الغلاف الجوي؟", a:["الأكسجين", "النيتروجين", "ثاني أكسيد الكربون"], c:1},
+        {cat:"شعر", q:"من هو شاعر الحكمة؟", a:["المتنبي", "امرؤ القيس", "جرير"], c:0},
+        {cat:"تاريخ", q:"من هو مؤسس الدولة الأموية؟", a:["معاوية بن أبي سفيان", "عمر بن الخطاب", "عبد الملك"], c:0},
+        {cat:"جغرافيا", q:"ما أطول نهر في أوروبا؟", a:["الراين", "الفولغا", "الدانوب"], c:1},
+        {cat:"علوم", q:"ما هو أصغر جزء في المادة؟", a:["الخلية", "الذرة", "الجزيء"], c:1},
+        {cat:"أدب", q:"من هو عميد الأدب العربي؟", a:["طه حسين", "العقاد", "الرافعي"], c:0},
+        {cat:"شعر", q:"من القائل: وما نيل المطالب بالتمني؟", a:["أحمد شوقي", "المتنبي", "نزار قباني"], c:1},
+        {cat:"تاريخ", q:"كم استمرت الحرب العالمية الثانية؟", a:["4 سنوات", "6 سنوات", "8 سنوات"], c:1},
+        {cat:"جغرافيا", q:"ما هي أعلى هضبة في العالم؟", a:["التبت", "الأناضول", "الدكن"], c:0},
+        {cat:"علوم", q:"ما العنصر الأساسي في تكوين النجوم؟", a:["الحديد", "الهيدروجين", "الأكسجين"], c:1},
+        {cat:"أدب", q:"من مؤلف رواية 'رجال في الشمس'؟", a:["غسان كنفاني", "نجيب محفوظ", "الطيب صالح"], c:0},
+        {cat:"شعر", q:"من هو شاعر المعلقات؟", a:["امرؤ القيس", "أبو تمام", "البحتري"], c:0}
+    ];
+
+    let turn = 'red';
+    let scores = {red: 0, blue: 0};
+    let state = Array(30).fill(null);
+    let timer;
+
+    // بناء اللوحة 5-6-6-6-7 (توزيع لـ 30 سؤال)
+    const layout = [5, 6, 7, 7, 5];
+    let qIdx = 0;
+    layout.forEach(count => {
+        let row = document.createElement('div');
+        row.className = 'row';
+        for(let i=0; i<count; i++){
+            if(qIdx < questions.length){
+                let hex = document.createElement('div');
+                hex.className = 'hexagon';
+                hex.innerText = qIdx + 1;
+                let id = qIdx;
+                hex.onclick = () => openQuestion(id, hex);
+                row.appendChild(hex);
+                qIdx++;
+            }
+        }
+        document.getElementById('board').appendChild(row);
+    });
+
+    function openQuestion(id, el) {
+        if(state[id]) return;
+        document.getElementById('modal').style.display = 'flex';
+        document.getElementById('m-content').style.borderColor = turn === 'red' ? 'var(--red-team)' : 'var(--blue-team)';
+        document.getElementById('q-category').innerText = `المجال: ${questions[id].cat}`;
+        document.getElementById('q-text').innerText = questions[id].q;
+        let box = document.getElementById('options-box');
+        box.innerHTML = '';
+        questions[id].a.forEach((opt, i) => {
+            let btn = document.createElement('button');
+            btn.className = 'option-btn';
+            btn.innerText = opt;
+            btn.onclick = () => checkAns(i, questions[id].c, id, el);
+            box.appendChild(btn);
+        });
+        startTimer();
+    }
+
+    function startTimer(){
+        let s = 15;
+        document.getElementById('timer').innerText = s;
+        clearInterval(timer);
+        timer = setInterval(() => {
+            s--; document.getElementById('timer').innerText = s;
+            if(s<=0){ clearInterval(timer); document.getElementById('snd-wrong').play(); switchTurn(); closeModal(); }
+        }, 1000);
+    }
+
+    function checkAns(selected, correct, id, el) {
+        clearInterval(timer);
+        if(selected === correct) {
+            document.getElementById('snd-correct').play();
+            state[id] = turn;
+            el.classList.add(turn === 'red' ? 'red-owned' : 'blue-owned');
+            scores[turn]++;
+            document.getElementById(`s-${turn}`).innerText = scores[turn];
+            if(checkWin(turn)) {
+                setTimeout(() => showFinalWin(turn), 500);
+            } else {
+                switchTurn();
+                closeModal();
+            }
+        } else {
+            document.getElementById('snd-wrong').play();
+            switchTurn();
+            closeModal();
+        }
+    }
+
+    function switchTurn() {
+        turn = turn === 'red' ? 'blue' : 'red';
+        document.getElementById('card-red').className = `score-card ${turn==='red'?'active-red':'red-idle'}`;
+        document.getElementById('card-blue').className = `score-card ${turn==='blue'?'active-blue':'blue-idle'}`;
+    }
+
+    function checkWin(p) {
+        // فحص مبسط لـ 4 إجابات متتالية في المصفوفة
+        for(let i=0; i<state.length-3; i++) {
+            if(state[i]===p && state[i+1]===p && state[i+2]===p && state[i+3]===p) return true;
+        }
+        return false;
+    }
+
+    function showFinalWin(p) {
+        document.getElementById('final-msg').style.display = 'flex';
+        document.getElementById('winner-text').innerText = p === 'red' ? "الفريق الأحمر" : "الفريق الأزرق";
+    }
+
+    function closeModal() { document.getElementById('modal').style.display = 'none'; }
+</script>
+</body>
+</html>
